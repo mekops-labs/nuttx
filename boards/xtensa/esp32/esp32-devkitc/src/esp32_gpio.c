@@ -50,11 +50,9 @@
 #  error "NGPIOINT is > 0 and GPIO interrupts aren't enabled"
 #endif
 
-/* Output pins. GPIO15 is used as an example, any other outputs could be
- * used.
- */
+/* Output pins. GPIO21 drives the onboard LED on the Waveshare ESP32 One. */
 
-#define GPIO_OUT1    15
+#define GPIO_OUT1    21
 
 /* Input pins. GPIO18 is used as an example, any other inputs could be
  * used.
