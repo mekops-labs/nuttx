@@ -246,6 +246,12 @@ static int IRAM_ATTR esp32_writedata(struct esp32_spiflash_s *priv,
 static int IRAM_ATTR esp32_readdata(struct esp32_spiflash_s *priv,
                                     uint32_t addr,
                                     uint8_t *buffer, uint32_t size);
+#ifdef CONFIG_ESP32_SPIFLASH_MMAP_READ
+static int IRAM_ATTR esp32_mmap(struct esp32_spiflash_s *priv,
+                                struct spiflash_map_req *req);
+static void IRAM_ATTR esp32_ummap(struct esp32_spiflash_s *priv,
+                                  const struct spiflash_map_req *req);
+#endif
 static int IRAM_ATTR esp32_readdata_encrypted(struct esp32_spiflash_s *priv,
                                               uint32_t addr,
                                               uint8_t *buffer,
@@ -1343,6 +1349,39 @@ static int IRAM_ATTR esp32_readdata(struct esp32_spiflash_s *priv,
   int ret;
   uint32_t off = 0;
   uint32_t bytes;
+
+#ifdef CONFIG_ESP32_SPIFLASH_MMAP_READ
+  /* Read through the memory-mapped flash cache window rather than a manual,
+   * cache-disabled SPI read. The mapped read keeps the cache enabled and stays
+   * coherent with PSRAM (esp32_mmap writes back the PSRAM cache before the
+   * read), so it no longer returns corrupt bytes while another task holds live
+   * (dirty) PSRAM.
+   */
+
+  while (size > 0)
+    {
+      struct spiflash_map_req req;
+
+      bytes = MIN(size, SPI_FLASH_MMU_PAGE_SIZE);
+      req.src_addr = addr;
+      req.size = bytes;
+
+      ret = esp32_mmap(priv, &req);
+      if (ret)
+        {
+          return ret;
+        }
+
+      memcpy(&buffer[off], req.ptr, bytes);
+      esp32_ummap(priv, &req);
+
+      addr += bytes;
+      size -= bytes;
+      off += bytes;
+    }
+
+  return OK;
+#else
   uint32_t tmp_buf[SPI_FLASH_READ_WORDS];
 
   while (size > 0)
@@ -1366,6 +1405,7 @@ static int IRAM_ATTR esp32_readdata(struct esp32_spiflash_s *priv,
     }
 
   return OK;
+#endif
 }
 
 /****************************************************************************

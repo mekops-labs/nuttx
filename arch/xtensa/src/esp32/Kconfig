@@ -617,6 +617,20 @@ config ESP32_SPIFLASH
 	select MTD_PARTITION
 	select ESPRESSIF_SPIFLASH
 
+config ESP32_SPIFLASH_MMAP_READ
+	bool "Read SPI Flash through the memory-mapped cache window"
+	default n
+	depends on ESP32_SPIFLASH
+	---help---
+		Read flash via the memory-mapped flash cache window (as the
+		hardware-encrypted read path does) instead of a manual,
+		cache-disabled SPI read. The manual read disables the whole cache
+		for the duration of the transfer, which on a chip sharing one cache
+		between flash and PSRAM returns corrupt bytes while another task
+		holds live (dirty) PSRAM. The mapped read keeps the cache enabled
+		and writes back the PSRAM cache first, so it stays coherent. Costs
+		an MMU-map + cache-flush per read; enable when PSRAM is used.
+
 config ESP32_SPI2
 	bool "SPI 2"
 	default n
