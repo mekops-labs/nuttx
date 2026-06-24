@@ -347,6 +347,20 @@ int esp32_bringup(void)
     }
 #endif
 
+#ifdef CONFIG_ESPRESSIF_HR_TIMER
+  /* Initialize the high-resolution (esp_timer) subsystem BEFORE the wireless
+   * stacks: the Wi-Fi/BLE blobs create esp_timers during their init, and
+   * esp_timer_create returns ESP_ERR_INVALID_STATE until the timer task is up.
+   * Initialising it here keeps Wi-Fi's scan/connection timers working.
+   */
+
+  ret = esp_hr_timer_init();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: esp_hr_timer_init() failed: %d\n", ret);
+    }
+#endif
+
 #ifdef CONFIG_ESPRESSIF_WIFI_BT_COEXIST
   ret = esp32_wifi_bt_coexist_init();
   if (ret)
@@ -387,14 +401,6 @@ int esp32_bringup(void)
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: Failed to initialize Open ETH ethernet.\n");
-    }
-#endif
-
-#ifdef CONFIG_ESPRESSIF_HR_TIMER
-  ret = esp_hr_timer_init();
-  if (ret < 0)
-    {
-      syslog(LOG_ERR, "ERROR: esp_hr_timer_init() failed: %d\n", ret);
     }
 #endif
 
