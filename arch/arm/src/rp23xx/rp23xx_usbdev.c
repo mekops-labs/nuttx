@@ -2085,6 +2085,35 @@ int usbdev_register(struct usbdevclass_driver_s *driver)
   rp23xx_allocep(&g_usbdev.usbdev, 0x00, 0, USB_EP_ATTR_XFER_CONTROL);
   rp23xx_allocep(&g_usbdev.usbdev, 0x80, 1, USB_EP_ATTR_XFER_CONTROL);
 
+  /* Bring the controller and PHY up *before* binding the class driver:
+   * the class driver's bind() calls DEV_CONNECT() (rp23xx_pullup(true))
+   * as its last step, and on rp23xx that pullup has no effect on the
+   * physical D+ line while the PHY is still isolated (MAIN_CTRL_PHY_ISO)
+   * or the controller is disabled (MAIN_CTRL_CONTROLLER_EN=0) - the write
+   * lands in SIE_CTRL, but the analog PHY behind it isn't listening yet.
+   */
+
+  modreg32(0, RP23XX_USBCTRL_REGS_MAIN_CTRL_PHY_ISO,
+    RP23XX_USBCTRL_REGS_MAIN_CTRL);
+
+  putreg32(RP23XX_USBCTRL_REGS_MAIN_CTRL_CONTROLLER_EN,
+           RP23XX_USBCTRL_REGS_MAIN_CTRL);
+
+  /* Enable interrupt.  setbits (not putreg32) so this doesn't clobber the
+   * SIE_CTRL_PULLUP_EN bit that DEV_CONNECT() sets during CLASS_BIND()
+   * below - the pullup would otherwise be silently un-asserted right
+   * after bind() enables it.
+   */
+
+  setbits_reg32(RP23XX_USBCTRL_REGS_SIE_CTRL_EP0_INT_1BUF,
+                RP23XX_USBCTRL_REGS_SIE_CTRL);
+  putreg32(RP23XX_USBCTRL_REGS_INTR_BUFF_STATUS |
+           RP23XX_USBCTRL_REGS_INTR_BUS_RESET |
+           RP23XX_USBCTRL_REGS_INTR_SETUP_REQ,
+           RP23XX_USBCTRL_REGS_INTE);
+
+  up_enable_irq(RP23XX_USBCTRL_IRQ);
+
   /* Then bind the class driver */
 
   ret = CLASS_BIND(driver, &g_usbdev.usbdev);
@@ -2096,23 +2125,6 @@ int usbdev_register(struct usbdevclass_driver_s *driver)
     }
 
   g_usbdev.usbdev.speed = USB_SPEED_FULL;
-
-  modreg32(0, RP23XX_USBCTRL_REGS_MAIN_CTRL_PHY_ISO,
-    RP23XX_USBCTRL_REGS_MAIN_CTRL);
-
-  putreg32(RP23XX_USBCTRL_REGS_MAIN_CTRL_CONTROLLER_EN,
-           RP23XX_USBCTRL_REGS_MAIN_CTRL);
-
-  /* Enable interrupt */
-
-  putreg32(RP23XX_USBCTRL_REGS_SIE_CTRL_EP0_INT_1BUF,
-           RP23XX_USBCTRL_REGS_SIE_CTRL);
-  putreg32(RP23XX_USBCTRL_REGS_INTR_BUFF_STATUS |
-           RP23XX_USBCTRL_REGS_INTR_BUS_RESET |
-           RP23XX_USBCTRL_REGS_INTR_SETUP_REQ,
-           RP23XX_USBCTRL_REGS_INTE);
-
-  up_enable_irq(RP23XX_USBCTRL_IRQ);
 
   return OK;
 }
