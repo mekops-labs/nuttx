@@ -9,6 +9,55 @@ config RP23XX_RP2350B
 	bool "Use RP2350B variant (QFN-80)"
 	default n
 
+#####################################################################
+#  PSRAM Configuration
+#####################################################################
+
+config RP23XX_PSRAM
+	bool "External PSRAM support"
+	default n
+
+if RP23XX_PSRAM
+choice
+	prompt "PSRAM heap mode"
+	default RP23XX_PSRAM_HEAP_USER
+
+config RP23XX_PSRAM_HEAP_SINGLE
+	bool "Use PSRAM and SRAM as a single main heap"
+	depends on MM_REGIONS > 1 && !MM_KERNEL_HEAP
+	---help---
+		The external PSRAM and the internal SRAM will be used for
+		a single main heap. This configuration is good for maximum
+		usage of the memory without partitioning, however as there
+		is no control whether the memory is allocated in the SRAM
+		or the PSRAM, some regions will behave much slower than
+		others and the user must be careful in managing those
+		buffers for real world applications.
+
+		This option requires MM_REGIONS to be set >= 2, so the
+		PSRAM is added to the main heap as a new region.
+
+config RP23XX_PSRAM_HEAP_USER
+	bool "Use PSRAM as user heap, SRAM as kernel heap"
+	depends on MM_KERNEL_HEAP
+	---help---
+		The external PSRAM is allocated to the default heap, while
+		the internal SRAM will be used for the kernel heap. This
+		configuration is useful because it allows drivers to
+		use the SRAM and behave much faster than if they used
+		memory on the PSRAM. While user applications can take
+		the full benefit of the larger slower heap on the PSRAM.
+
+config RP23XX_PSRAM_HEAP_SEPARATE
+	bool "Use PSRAM as a separate heap"
+	select ARCH_HAVE_EXTRA_HEAPS
+	---help---
+		The internal SRAM is used as the main heap for kernel and
+		applications. The external PSRAM is configured as a
+		separate user heap.
+endchoice
+endif
+
 config RP23XX_DMAC
 	bool "DMAC support"
 	default y
