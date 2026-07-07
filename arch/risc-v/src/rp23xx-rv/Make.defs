@@ -55,6 +55,18 @@ ifeq ($(CONFIG_RP23XX_RV_SPI),y)
 CHIP_CSRCS += rp23xx_spi.c
 endif
 
+ifeq ($(CONFIG_RP23XX_RV_PSRAM),y)
+CHIP_CSRCS += rp23xx_psram.c
+CHIP_CSRCS += rp23xx_heaps.c
+
+# See the identical comment in arch/arm/src/rp23xx/Make.defs: placing
+# rp23xx_psram.c's QMI-timing functions outside .text (so they execute
+# from RAM, not flash) confuses this toolchain's DWARF location-view
+# tracking under -g, producing "leb128 operand is an undefined symbol:
+# .LVUnn" assembler errors.
+CFLAGS += -gno-variable-location-views
+endif
+
 ifeq ($(CONFIG_RP23XX_RV_PWM),y)
 CHIP_CSRCS += rp23xx_pwm.c
 endif
