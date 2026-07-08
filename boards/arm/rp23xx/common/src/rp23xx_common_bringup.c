@@ -533,7 +533,10 @@ int rp23xx_common_bringup(void)
 
   if (strlen(CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT) > 0)
     {
-      FAR struct mtd_dev_s *mtd = rp23xx_flash_mtd_initialize();
+      FAR struct mtd_dev_s *mtd;
+
+      syslog(LOG_INFO, "rp23xx_flash_mtd: binding MTD device\n");
+      mtd = rp23xx_flash_mtd_initialize();
 
       if (mtd == NULL)
         {
@@ -549,11 +552,15 @@ int rp23xx_common_bringup(void)
             }
           else
             {
+              syslog(LOG_INFO, "rp23xx_flash_mtd: mounting littlefs\n");
               ret = nx_mount("/dev/rp23xxflash",
                              CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT,
                              "littlefs", 0, NULL);
               if (ret < 0)
                 {
+                  syslog(LOG_INFO,
+                         "rp23xx_flash_mtd: mount failed (%d), "
+                         "formatting\n", ret);
                   ret = nx_mount("/dev/rp23xxflash",
                                  CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT,
                                  "littlefs", 0, "forceformat");
@@ -563,6 +570,15 @@ int rp23xx_common_bringup(void)
                              "ERROR: nx_mount(%s,littlefs) failed: %d\n",
                              CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT, ret);
                     }
+                  else
+                    {
+                      syslog(LOG_INFO,
+                             "rp23xx_flash_mtd: format+mount OK\n");
+                    }
+                }
+              else
+                {
+                  syslog(LOG_INFO, "rp23xx_flash_mtd: mount OK\n");
                 }
             }
         }
