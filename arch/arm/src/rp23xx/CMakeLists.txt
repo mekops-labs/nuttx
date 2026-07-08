@@ -56,6 +56,10 @@ if(CONFIG_RP23XX_PSRAM)
   list(APPEND SRCS rp23xx_psram.c rp23xx_heaps.c)
 endif()
 
+if(CONFIG_RP23XX_FLASH_MTD)
+  list(APPEND SRCS rp23xx_flash_mtd.c)
+endif()
+
 if(CONFIG_RP23XX_PWM)
   list(APPEND SRCS rp23xx_pwm.c)
 endif()

@@ -70,6 +70,18 @@ CHIP_CSRCS += rp23xx_heaps.c
 CFLAGS += -gno-variable-location-views
 endif
 
+ifeq ($(CONFIG_RP23XX_FLASH_MTD),y)
+CHIP_CSRCS += rp23xx_flash_mtd.c
+
+# rp23xx_flash_mtd.c places its erase/program functions in .data (see the
+# file header) so they execute from RAM, not flash, while they take the
+# flash out of XIP mode.  Placing code outside .text confuses this
+# toolchain's DWARF location-view tracking under -g ("leb128 operand is an
+# undefined symbol: .LVUnn", a known gcc/gas interaction) - so location
+# views are disabled for this chip.
+CFLAGS += -gno-variable-location-views
+endif
+
 ifeq ($(CONFIG_RP23XX_PWM),y)
 CHIP_CSRCS += rp23xx_pwm.c
 endif

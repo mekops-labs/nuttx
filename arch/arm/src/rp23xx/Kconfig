@@ -58,6 +58,43 @@ config RP23XX_PSRAM_HEAP_SEPARATE
 endchoice
 endif
 
+#####################################################################
+#  Internal Flash MTD Configuration
+#####################################################################
+
+config RP23XX_FLASH_MTD
+	bool "Internal flash MTD device"
+	default n
+	select MTD
+	---help---
+		Bind an MTD device over a fixed, reserved region of the
+		internal QSPI flash, using the ROM's flash erase/program
+		calls.  Intended for a writable filesystem (e.g. LittleFS)
+		living alongside the XIP firmware image on the same chip.
+
+if RP23XX_FLASH_MTD
+
+config RP23XX_FLASH_MTD_BASE
+	hex "MTD region base offset (from the flash's XIP window)"
+	default 0x400000
+	---help---
+		Byte offset, from the start of the flash's XIP window, where
+		the MTD region begins.  Must be at or beyond the board's
+		linker-declared FLASH region length, so the firmware image
+		can never overlap it - a firmware that outgrows that region
+		fails to link rather than silently corrupting this region at
+		runtime. The default (4 MiB) matches every in-tree rp23xx
+		board script's declared FLASH length.
+
+config RP23XX_FLASH_MTD_SIZE
+	int "MTD region size in bytes"
+	default 2097152
+	---help---
+		Size of the reserved MTD region. Must not extend past the
+		physical flash chip's actual size.
+
+endif # RP23XX_FLASH_MTD
+
 config RP23XX_DMAC
 	bool "DMAC support"
 	default y
