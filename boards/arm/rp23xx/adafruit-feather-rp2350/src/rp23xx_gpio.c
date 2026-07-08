@@ -41,10 +41,11 @@
 
 #if defined(CONFIG_DEV_GPIO) && !defined(CONFIG_GPIO_LOWER_HALF)
 
-/* Output pins. GPIO25 is onboard LED any other outputs could be used.
+/* Output pins. BOARD_GPIO_LED_PIN (board.h) is the onboard red LED; any
+ * other outputs could be used.
  */
 
-#define GPIO_OUT1     25
+#define GPIO_OUT1     BOARD_GPIO_LED_PIN
 
 /* Input pins.
  */
