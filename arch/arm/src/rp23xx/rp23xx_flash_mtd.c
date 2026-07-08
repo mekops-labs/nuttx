@@ -76,7 +76,14 @@
  ****************************************************************************/
 
 #define XIP_BASE                 0x10000000
-#define XIP_NOCACHE_NOALLOC_BASE 0x13000000
+
+/* Per the RP2350 datasheet (Table 10, "Address map for XIP bus segment"),
+ * the no-cache/no-allocate alias sits at 0x14000000 - not 0x13000000 as on
+ * rp2040, where the cached/non-cached and allocating/non-allocating modes
+ * were four separate 16 MiB-spaced aliases (0x10/0x11/0x12/0x13000000).
+ * RP2350 collapsed that to two: XIP_BASE (cached, allocating) and this one.
+ */
+#define XIP_NOCACHE_NOALLOC_BASE 0x14000000
 
 #define FLASH_MTD_BASE_ADDR (XIP_BASE + CONFIG_RP23XX_FLASH_MTD_BASE)
 #define FLASH_MTD_READ_ADDR \
@@ -523,6 +530,18 @@ FAR struct mtd_dev_s *rp23xx_flash_mtd_initialize(void)
     (flash_flush_cache_f)rom_func_lookup(ROM_FUNC_FLASH_FLUSH_CACHE);
   g_rom_functions.flash_enter_cmd_xip =
     (flash_enter_cmd_xip_f)rom_func_lookup(ROM_FUNC_FLASH_ENTER_CMD_XIP);
+
+  if (g_rom_functions.connect_internal_flash == NULL ||
+      g_rom_functions.flash_exit_xip == NULL ||
+      g_rom_functions.flash_range_erase == NULL ||
+      g_rom_functions.flash_range_program == NULL ||
+      g_rom_functions.flash_flush_cache == NULL ||
+      g_rom_functions.flash_enter_cmd_xip == NULL)
+    {
+      ferr("ERROR: a required ROM flash function was not found\n");
+      errno = ENOSYS;
+      return NULL;
+    }
 
   g_rp23xx_flash_dev.mtd.erase  = rp23xx_flash_erase;
   g_rp23xx_flash_dev.mtd.bread  = rp23xx_flash_bread;
