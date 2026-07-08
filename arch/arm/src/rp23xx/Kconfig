@@ -66,6 +66,7 @@ config RP23XX_FLASH_MTD
 	bool "Internal flash MTD device"
 	default n
 	select MTD
+	select FS_LITTLEFS
 	---help---
 		Bind an MTD device over a fixed, reserved region of the
 		internal QSPI flash, using the ROM's flash erase/program

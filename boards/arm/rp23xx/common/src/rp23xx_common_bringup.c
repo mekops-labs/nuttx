@@ -53,6 +53,11 @@
 #  include <rp23xx_romfsimg.h>
 #endif
 
+#ifdef CONFIG_RP23XX_FLASH_MTD
+#  include <nuttx/mtd/mtd.h>
+#  include "rp23xx_flash_mtd.h"
+#endif
+
 #if defined(CONFIG_RP23XX_BOARD_HAS_WS2812) && defined(CONFIG_WS2812)
 #  include "rp23xx_ws2812.h"
 #ifdef CONFIG_WS2812_HAS_WHITE
@@ -520,5 +525,49 @@ int rp23xx_common_bringup(void)
     }
 
 #endif
+
+#ifdef CONFIG_RP23XX_FLASH_MTD
+  /* Bind the internal-flash MTD region and mount a LittleFS volume over it,
+   * so that CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT is not empty.
+   */
+
+  if (strlen(CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT) > 0)
+    {
+      FAR struct mtd_dev_s *mtd = rp23xx_flash_mtd_initialize();
+
+      if (mtd == NULL)
+        {
+          syslog(LOG_ERR, "ERROR: rp23xx_flash_mtd_initialize failed\n");
+        }
+      else
+        {
+          ret = register_mtddriver("/dev/rp23xxflash", mtd, 0755, NULL);
+          if (ret < 0)
+            {
+              syslog(LOG_ERR,
+                     "ERROR: register_mtddriver failed: %d\n", ret);
+            }
+          else
+            {
+              ret = nx_mount("/dev/rp23xxflash",
+                             CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT,
+                             "littlefs", 0, NULL);
+              if (ret < 0)
+                {
+                  ret = nx_mount("/dev/rp23xxflash",
+                                 CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT,
+                                 "littlefs", 0, "forceformat");
+                  if (ret < 0)
+                    {
+                      syslog(LOG_ERR,
+                             "ERROR: nx_mount(%s,littlefs) failed: %d\n",
+                             CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT, ret);
+                    }
+                }
+            }
+        }
+    }
+#endif
+
   return ret;
 }

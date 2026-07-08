@@ -527,3 +527,20 @@ config RP23XX_WS2812_PWR_GPIO
 		such a pin.
 
 endif # RP23XX_BOARD_HAS_WS2812
+
+#####################################################################
+#  Internal Flash MTD Filesystem
+#####################################################################
+
+if RP23XX_FLASH_MTD
+
+config RP23XX_FLASH_MTD_MOUNTPOINT
+	string "mount point for the internal-flash LittleFS volume"
+	default "/mnt/flash"
+	---help---
+		Mount point where a LittleFS volume over the
+		RP23XX_FLASH_MTD region is auto-mounted at board bring-up
+		(auto-formatting on first boot if no valid volume is found).
+		Leave empty to bind the MTD device without mounting it.
+
+endif # RP23XX_FLASH_MTD
