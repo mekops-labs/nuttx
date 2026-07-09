@@ -99,6 +99,11 @@ void up_extraheaps_init(void)
 {
     g_psramheap = mm_initialize("psram", psram_start, psram_size);
 }
+
+FAR struct mm_heap_s *rp23xx_psram_heap(void)
+{
+  return g_psramheap;
+}
 #endif
 
 #endif
