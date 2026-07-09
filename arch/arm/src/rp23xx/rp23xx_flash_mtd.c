@@ -43,6 +43,23 @@
  * reason they call out only through the resolved ROM function pointers
  * (an indirect branch, unaffected by Thumb's branch-range limit) and never
  * directly to another flash-resident helper.
+ *
+ * On boards where PSRAM shares the XIP cache with this flash (CS1, see
+ * rp23xx_psram.c), do_erase()/do_program() must clean the cache before
+ * calling the ROM's flash_flush_cache() - which unconditionally invalidates
+ * the whole cache to make new flash contents visible. PSRAM writes through
+ * that cached window are write-back, not write-through: an ordinary store
+ * only lands in the cache until it's cleaned out, so an invalidate with no
+ * prior clean silently discards any not-yet-flushed PSRAM data. Root-caused
+ * against a real, reproducible failure (WANTED engine bring-up corrupting a
+ * PSRAM-resident heap during registry writes) and confirmed with a minimal
+ * bare-metal reproduction outside NuttX entirely - see the M4 status note in
+ * plans/wanted-sheriff-deputy-uart-transport.md in the mekops-kb. The
+ * official Raspberry Pi Pico SDK's own flash_range_erase()/flash_range_
+ * program() already do the equivalent clean (hardware_xip_cache's
+ * xip_cache_clean_all()) for exactly this reason; xip_cache_clean_all()
+ * below is a from-scratch NuttX port of that same operation (no cache
+ * hardware access, so no SDK dependency needed).
  ****************************************************************************/
 
 /****************************************************************************
@@ -62,6 +79,10 @@
 #include <errno.h>
 #include <debug.h>
 
+#include <arch/barriers.h>
+
+#include "arm_internal.h"
+#include "hardware/rp23xx_qmi.h"
 #include "rp23xx_rom.h"
 #include "rp23xx_flash_mtd.h"
 
@@ -84,6 +105,27 @@
  * RP2350 collapsed that to two: XIP_BASE (cached, allocating) and this one.
  */
 #define XIP_NOCACHE_NOALLOC_BASE 0x14000000
+
+/* XIP cache maintenance (RP2350 datasheet Sec. 4.4.1): writes to this 16 MiB
+ * mirror perform cache maintenance ops instead of normal memory access, one
+ * op per 8-byte cache line, selected by the low address bits. 1 = "clean by
+ * set/way" - write back any dirty (not yet flushed to the downstream
+ * device) cache line without discarding it. This driver's flash program/
+ * erase needs it because a PSRAM write through the same cached XIP window
+ * (CS1, see rp23xx_psram.c) is write-back: an ordinary store only lands in
+ * this cache, not yet in the PSRAM chip, until it's cleaned out or evicted.
+ * The ROM's flash_flush_cache() call below (inside do_erase()/do_program())
+ * invalidates the *entire* cache to make the new flash contents visible -
+ * with no matching clean first, any not-yet-written-back PSRAM data is
+ * simply discarded, not corrupted in place but never having reached the
+ * chip at all. See plans/wanted-sheriff-deputy-uart-transport.md's M4
+ * status note in the mekops-kb and the bare-metal reproduction linked from
+ * there for how this was root-caused. */
+#define XIP_MAINTENANCE_BASE     0x18000000
+#define XIP_CACHE_CLEAN_BY_SET_WAY 1
+#define XIP_CACHE_LINE_SIZE      8
+#define XIP_CACHE_SIZE           (16 * 1024)
+#define XIP_END                  0x14000000
 
 #define FLASH_MTD_BASE_ADDR (XIP_BASE + CONFIG_RP23XX_FLASH_MTD_BASE)
 #define FLASH_MTD_READ_ADDR \
@@ -275,6 +317,77 @@ static void leave_smp_isolation(FAR struct smp_isolation_s *data)
 #endif
 
 /****************************************************************************
+ * Name: xip_cache_clean_all
+ *
+ * Description:
+ *   Write back any dirty XIP cache lines (see the XIP_MAINTENANCE_BASE
+ *   comment above) without discarding them. Must run before
+ *   flash_flush_cache()'s unconditional invalidate-all, or dirty PSRAM
+ *   write data cached through CS1's XIP window is silently lost.
+ *
+ ****************************************************************************/
+
+static void locate_code(".data") noinline_function
+xip_cache_clean_all(void)
+{
+  uint32_t offset;
+  uint32_t start = XIP_END - XIP_BASE - XIP_CACHE_SIZE;
+  uint32_t end = start + XIP_CACHE_SIZE;
+
+  for (offset = start; offset < end; offset += XIP_CACHE_LINE_SIZE)
+    {
+      *(FAR volatile uint8_t *)
+        (XIP_MAINTENANCE_BASE + offset + XIP_CACHE_CLEAN_BY_SET_WAY) = 0;
+    }
+
+  UP_DSB();
+  UP_ISB();
+}
+
+/****************************************************************************
+ * Name: save_qmi_cs1 / restore_qmi_cs1
+ *
+ * Description:
+ *   The RP2350 ROM's flash_exit_xip()/flash_range_erase()/flash_range_
+ *   program() calls reconfigure the *whole* QMI, including window 1 (CS1) -
+ *   even though CS1 carries PSRAM on this board, not flash. Left alone,
+ *   PSRAM reads/writes through the M1 XIP window are misinterpreted using
+ *   whatever read/write format the ROM left behind, until something
+ *   reprograms M1 back to PSRAM's actual QPI format. The official Pico SDK
+ *   does the equivalent save/restore around its own flash_range_erase()/
+ *   flash_range_program() (flash.c's flash_rp2350_save_qmi_cs1()/
+ *   flash_rp2350_restore_qmi_cs1()) for exactly this reason; this is a
+ *   from-scratch NuttX port of the same idea, saving/restoring only the
+ *   three registers that matter for a read-mostly PSRAM heap (timing,
+ *   rcmd, rfmt - see rp23xx_psram.c's psram_init() for where these were
+ *   first set up).
+ *
+ ****************************************************************************/
+
+struct qmi_cs1_save_s
+{
+  uint32_t timing;
+  uint32_t rfmt;
+  uint32_t rcmd;
+};
+
+static void locate_code(".data") noinline_function
+save_qmi_cs1(FAR struct qmi_cs1_save_s *save)
+{
+  save->timing = getreg32(RP23XX_QMI_M1_TIMING);
+  save->rfmt   = getreg32(RP23XX_QMI_M1_RFMT);
+  save->rcmd   = getreg32(RP23XX_QMI_M1_RCMD);
+}
+
+static void locate_code(".data") noinline_function
+restore_qmi_cs1(FAR const struct qmi_cs1_save_s *save)
+{
+  putreg32(save->timing, RP23XX_QMI_M1_TIMING);
+  putreg32(save->rfmt, RP23XX_QMI_M1_RFMT);
+  putreg32(save->rcmd, RP23XX_QMI_M1_RCMD);
+}
+
+/****************************************************************************
  * Name: do_erase
  *
  * Description:
@@ -286,6 +399,11 @@ static void leave_smp_isolation(FAR struct smp_isolation_s *data)
 static void locate_code(".data") noinline_function
 do_erase(uint32_t addr, size_t count)
 {
+  struct qmi_cs1_save_s qmi_save;
+
+  xip_cache_clean_all();
+  save_qmi_cs1(&qmi_save);
+
   g_rom_functions.connect_internal_flash();
   g_rom_functions.flash_exit_xip();
 
@@ -297,6 +415,8 @@ do_erase(uint32_t addr, size_t count)
 
   g_rom_functions.flash_flush_cache();
   g_rom_functions.flash_enter_cmd_xip();
+
+  restore_qmi_cs1(&qmi_save);
 }
 
 /****************************************************************************
@@ -310,6 +430,11 @@ do_erase(uint32_t addr, size_t count)
 static void locate_code(".data") noinline_function
 do_program(uint32_t addr, FAR const uint8_t *data, size_t count)
 {
+  struct qmi_cs1_save_s qmi_save;
+
+  xip_cache_clean_all();
+  save_qmi_cs1(&qmi_save);
+
   g_rom_functions.connect_internal_flash();
   g_rom_functions.flash_exit_xip();
 
@@ -317,6 +442,8 @@ do_program(uint32_t addr, FAR const uint8_t *data, size_t count)
 
   g_rom_functions.flash_flush_cache();
   g_rom_functions.flash_enter_cmd_xip();
+
+  restore_qmi_cs1(&qmi_save);
 }
 
 /****************************************************************************
