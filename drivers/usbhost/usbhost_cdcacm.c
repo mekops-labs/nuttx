@@ -1142,10 +1142,9 @@ static void usbhost_rxdata_work(FAR void *arg)
       rxbuf->buffer[rxbuf->head] = priv->inbuf[rxndx];
       nxfrd++;
 
-      /* Save the updated indices */
+      /* Save the updated index of the UART RX buffer */
 
       rxbuf->head = nexthead;
-      priv->rxndx = rxndx;
 
       /* Update the head point for for the next pass through the loop
        * handling. If nexthead incremented to rxbuf->tail, then the
@@ -1177,6 +1176,14 @@ static void usbhost_rxdata_work(FAR void *arg)
           nxfrd = 0;
           break;
         }
+
+      /* Save the index of the next byte to be transferred.  The loop may
+       * break at the top with data still in the packet buffer, in which case
+       * a later invocation of this work resumes from this index.  Saving the
+       * index of the byte just transferred would repeat that byte.
+       */
+
+      priv->rxndx = rxndx;
     }
 
   /* We break out to here:  1) the UART RX buffer is full, 2) the CDC/ACM
