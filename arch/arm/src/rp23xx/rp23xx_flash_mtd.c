@@ -98,13 +98,15 @@
 
 #define XIP_BASE                 0x10000000
 
-/* Per the RP2350 datasheet (Table 10, "Address map for XIP bus segment"),
- * the no-cache/no-allocate alias sits at 0x14000000 - not 0x13000000 as on
- * rp2040, where the cached/non-cached and allocating/non-allocating modes
- * were four separate 16 MiB-spaced aliases (0x10/0x11/0x12/0x13000000).
- * RP2350 collapsed that to two: XIP_BASE (cached, allocating) and this one.
- */
+/* RP2350 datasheet Table 10, "Address map for XIP bus segment": the
+ * no-cache/no-allocate alias, uncached and subject to QMI address
+ * translation. */
 #define XIP_NOCACHE_NOALLOC_BASE 0x14000000
+
+/* Same window with address translation bypassed, readable from secure code.
+ * The bootrom translates only the booted partition's window, so a read of
+ * this region through a translating alias faults once A/B is in use. */
+#define XIP_NOCACHE_NOALLOC_NOTRANSLATE_BASE 0x1c000000
 
 /* XIP cache maintenance (RP2350 datasheet Sec. 4.4.1): writes to this 16 MiB
  * mirror perform cache maintenance ops instead of normal memory access, one
@@ -127,9 +129,11 @@
 #define XIP_CACHE_SIZE           (16 * 1024)
 #define XIP_END                  0x14000000
 
+/* Erase/program take a storage address, which the ROM's flash ops truncate
+ * to the chip's 24-bit range; reads take a bus address. */
 #define FLASH_MTD_BASE_ADDR (XIP_BASE + CONFIG_RP23XX_FLASH_MTD_BASE)
 #define FLASH_MTD_READ_ADDR \
-  (XIP_NOCACHE_NOALLOC_BASE + CONFIG_RP23XX_FLASH_MTD_BASE)
+  (XIP_NOCACHE_NOALLOC_NOTRANSLATE_BASE + CONFIG_RP23XX_FLASH_MTD_BASE)
 
 /* Blocks are the smallest unit that can be erased; sectors the smallest
  * unit that can be programmed.  Both match the flash chip's own limits.
@@ -506,8 +510,8 @@ static ssize_t rp23xx_flash_bread(FAR struct mtd_dev_s *dev,
       return ret;
     }
 
-  /* Read through the XIP no-allocate/no-cache alias: programming does not
-   * update the XIP cache, so a cached read here could return stale data.
+  /* Uncached: programming does not update the XIP cache, so a cached read
+   * here could return stale data.
    */
 
   memcpy(buffer,
