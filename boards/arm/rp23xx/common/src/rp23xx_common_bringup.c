@@ -68,6 +68,60 @@
 #endif
 
 /****************************************************************************
+ * Private Functions
+ ****************************************************************************/
+
+#ifdef CONFIG_RP23XX_FLASH_MTD
+
+/****************************************************************************
+ * Name: rp23xx_flash_mount
+ *
+ * Description:
+ *   Register one flash MTD device and mount LittleFS over it, formatting
+ *   first if the mount finds no filesystem there.  Failures are reported
+ *   and swallowed: an unmounted volume is not a reason to abort bring-up.
+ *
+ ****************************************************************************/
+
+static void rp23xx_flash_mount(FAR struct mtd_dev_s *mtd,
+                               FAR const char *devpath,
+                               FAR const char *mountpoint)
+{
+  int ret;
+
+  ret = register_mtddriver(devpath, mtd, 0755, NULL);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: register_mtddriver(%s) failed: %d\n",
+             devpath, ret);
+      return;
+    }
+
+  ret = nx_mount(devpath, mountpoint, "littlefs", 0, NULL);
+  if (ret == 0)
+    {
+      syslog(LOG_INFO, "rp23xx_flash_mtd: mounted %s\n", mountpoint);
+      return;
+    }
+
+  syslog(LOG_INFO, "rp23xx_flash_mtd: mount %s failed (%d), formatting\n",
+         mountpoint, ret);
+
+  ret = nx_mount(devpath, mountpoint, "littlefs", 0, "forceformat");
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: nx_mount(%s,littlefs) failed: %d\n",
+             mountpoint, ret);
+    }
+  else
+    {
+      syslog(LOG_INFO, "rp23xx_flash_mtd: formatted and mounted %s\n",
+             mountpoint);
+    }
+}
+#endif
+
+/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -528,7 +582,9 @@ int rp23xx_common_bringup(void)
 
 #ifdef CONFIG_RP23XX_FLASH_MTD
   /* Bind the internal-flash MTD region and mount a LittleFS volume over it,
-   * so that CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT is not empty.
+   * so that CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT is not empty.  With
+   * CONFIG_RP23XX_FLASH_MTD_REGISTRY_SIZE set, the region is carved into two
+   * independently mounted filesystems first.
    */
 
   if (strlen(CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT) > 0)
@@ -542,46 +598,38 @@ int rp23xx_common_bringup(void)
         {
           syslog(LOG_ERR, "ERROR: rp23xx_flash_mtd_initialize failed\n");
         }
+#if CONFIG_RP23XX_FLASH_MTD_REGISTRY_SIZE > 0
       else
         {
-          ret = register_mtddriver("/dev/rp23xxflash", mtd, 0755, NULL);
-          if (ret < 0)
+          FAR struct mtd_dev_s *part;
+          off_t nblocks = CONFIG_RP23XX_FLASH_MTD_REGISTRY_SIZE /
+                          RP23XX_FLASH_MTD_BLOCK_SIZE;
+
+          /* mtd_partition() hands back the leading sub-region and shortens
+           * the parent in place, so the parent is what remains after it.
+           */
+
+          part = mtd_partition(mtd, 0, nblocks);
+          if (part == NULL)
             {
-              syslog(LOG_ERR,
-                     "ERROR: register_mtddriver failed: %d\n", ret);
+              syslog(LOG_ERR, "ERROR: mtd_partition failed\n");
             }
           else
             {
-              syslog(LOG_INFO, "rp23xx_flash_mtd: mounting littlefs\n");
-              ret = nx_mount("/dev/rp23xxflash",
-                             CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT,
-                             "littlefs", 0, NULL);
-              if (ret < 0)
-                {
-                  syslog(LOG_INFO,
-                         "rp23xx_flash_mtd: mount failed (%d), "
-                         "formatting\n", ret);
-                  ret = nx_mount("/dev/rp23xxflash",
-                                 CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT,
-                                 "littlefs", 0, "forceformat");
-                  if (ret < 0)
-                    {
-                      syslog(LOG_ERR,
-                             "ERROR: nx_mount(%s,littlefs) failed: %d\n",
-                             CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT, ret);
-                    }
-                  else
-                    {
-                      syslog(LOG_INFO,
-                             "rp23xx_flash_mtd: format+mount OK\n");
-                    }
-                }
-              else
-                {
-                  syslog(LOG_INFO, "rp23xx_flash_mtd: mount OK\n");
-                }
+              rp23xx_flash_mount(part, "/dev/rp23xxregistry",
+                                 CONFIG_RP23XX_FLASH_MTD_REGISTRY_MOUNTPOINT);
             }
+
+          rp23xx_flash_mount(mtd, "/dev/rp23xxflash",
+                             CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT);
         }
+#else
+      else
+        {
+          rp23xx_flash_mount(mtd, "/dev/rp23xxflash",
+                             CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT);
+        }
+#endif
     }
 #endif
 

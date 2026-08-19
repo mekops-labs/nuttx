@@ -94,6 +94,26 @@ config RP23XX_FLASH_MTD_SIZE
 		Size of the reserved MTD region. Must not extend past the
 		physical flash chip's actual size.
 
+config RP23XX_FLASH_MTD_REGISTRY_SIZE
+	int "Leading sub-region size in bytes (0 for one filesystem)"
+	default 0
+	---help---
+		Split the MTD region into two independently mounted LittleFS
+		filesystems.  This many bytes at the start of the region become
+		one filesystem, mounted at RP23XX_FLASH_MTD_REGISTRY_MOUNTPOINT;
+		the remainder becomes a second, mounted at
+		RP23XX_FLASH_MTD_MOUNTPOINT.  Data written to one cannot exhaust
+		the space of the other.  Must be a whole number of 4 KiB erase
+		blocks and smaller than RP23XX_FLASH_MTD_SIZE.  Zero mounts the
+		whole region as a single filesystem.
+
+config RP23XX_FLASH_MTD_REGISTRY_MOUNTPOINT
+	string "Leading sub-region mount point"
+	default "/mnt/registry"
+	depends on RP23XX_FLASH_MTD_REGISTRY_SIZE != 0
+	---help---
+		Where the leading sub-region is mounted.
+
 endif # RP23XX_FLASH_MTD
 
 config RP23XX_DMAC

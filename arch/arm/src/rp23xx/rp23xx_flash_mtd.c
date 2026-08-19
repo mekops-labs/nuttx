@@ -28,11 +28,11 @@
  * the flash's XIP window.
  *
  * That reservation is enforced by the board's own linker script rather
- * than by anything in this driver: every rp23xx board script declares a
- * FLASH memory region shorter than the physical chip (e.g. 4 MiB out of an
- * 8 MiB part), so a firmware image that grew into the reserved region
- * would fail to *link*, loudly, long before it could ever overwrite this
- * driver's storage at runtime.
+ * than by anything in this driver: a board script declares a FLASH memory
+ * region bounded by the image slot it boots from, so a firmware image that
+ * grew past its slot would fail to *link*, loudly, long before it could
+ * reach this driver's storage at runtime. A board declaring more flash
+ * than that bound gives up the guarantee.
  *
  * Erasing/programming requires momentarily taking the flash out of XIP
  * mode - the same physical pins the CPU is normally fetching instructions
@@ -53,9 +53,9 @@
  * prior clean silently discards any not-yet-flushed PSRAM data. Root-caused
  * against a real, reproducible failure (WANTED engine bring-up corrupting a
  * PSRAM-resident heap during registry writes) and confirmed with a minimal
- * bare-metal reproduction outside NuttX entirely. The official Raspberry
- * Pi Pico SDK's own flash_range_erase()/flash_range_
- * program() already do the equivalent clean (hardware_xip_cache's
+ * bare-metal reproduction outside NuttX entirely. The official Raspberry Pi
+ * Pico SDK's own flash_range_erase()/flash_range_program() already do the
+ * equivalent clean (hardware_xip_cache's
  * xip_cache_clean_all()) for exactly this reason; xip_cache_clean_all()
  * below is a from-scratch NuttX port of that same operation (no cache
  * hardware access, so no SDK dependency needed).
@@ -136,7 +136,7 @@
  * unit that can be programmed.  Both match the flash chip's own limits.
  */
 
-#define FLASH_BLOCK_SIZE  (4 * 1024)
+#define FLASH_BLOCK_SIZE  RP23XX_FLASH_MTD_BLOCK_SIZE
 #define FLASH_BLOCK_COUNT (CONFIG_RP23XX_FLASH_MTD_SIZE / FLASH_BLOCK_SIZE)
 
 #define FLASH_SECTOR_SIZE  256
