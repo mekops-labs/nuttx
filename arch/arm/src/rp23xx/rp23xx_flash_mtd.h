@@ -45,6 +45,11 @@ extern "C"
 #define EXTERN extern
 #endif
 
+/* Erase-block size of the internal QSPI flash.  Callers carving the region
+ * into partitions size them in these units. */
+
+#define RP23XX_FLASH_MTD_BLOCK_SIZE (4 * 1024)
+
 /****************************************************************************
  * Name: rp23xx_flash_mtd_initialize
  *

@@ -28,11 +28,11 @@
  * the flash's XIP window.
  *
  * That reservation is enforced by the board's own linker script rather
- * than by anything in this driver: every rp23xx board script declares a
- * FLASH memory region shorter than the physical chip (e.g. 4 MiB out of an
- * 8 MiB part), so a firmware image that grew into the reserved region
- * would fail to *link*, loudly, long before it could ever overwrite this
- * driver's storage at runtime.
+ * than by anything in this driver: a board script declares a FLASH memory
+ * region bounded by the image slot it boots from, so a firmware image that
+ * grew past its slot would fail to *link*, loudly, long before it could
+ * reach this driver's storage at runtime. A board declaring more flash
+ * than that bound gives up the guarantee.
  *
  * Erasing/programming requires momentarily taking the flash out of XIP
  * mode - the same physical pins the CPU is normally fetching instructions
@@ -53,10 +53,9 @@
  * prior clean silently discards any not-yet-flushed PSRAM data. Root-caused
  * against a real, reproducible failure (WANTED engine bring-up corrupting a
  * PSRAM-resident heap during registry writes) and confirmed with a minimal
- * bare-metal reproduction outside NuttX entirely - see the M4 status note in
- * plans/wanted-sheriff-deputy-uart-transport.md in the mekops-kb. The
- * official Raspberry Pi Pico SDK's own flash_range_erase()/flash_range_
- * program() already do the equivalent clean (hardware_xip_cache's
+ * bare-metal reproduction outside NuttX entirely. The official Raspberry Pi
+ * Pico SDK's own flash_range_erase()/flash_range_program() already do the
+ * equivalent clean (hardware_xip_cache's
  * xip_cache_clean_all()) for exactly this reason; xip_cache_clean_all()
  * below is a from-scratch NuttX port of that same operation (no cache
  * hardware access, so no SDK dependency needed).
@@ -98,13 +97,15 @@
 
 #define XIP_BASE                 0x10000000
 
-/* Per the RP2350 datasheet (Table 10, "Address map for XIP bus segment"),
- * the no-cache/no-allocate alias sits at 0x14000000 - not 0x13000000 as on
- * rp2040, where the cached/non-cached and allocating/non-allocating modes
- * were four separate 16 MiB-spaced aliases (0x10/0x11/0x12/0x13000000).
- * RP2350 collapsed that to two: XIP_BASE (cached, allocating) and this one.
- */
+/* RP2350 datasheet Table 10, "Address map for XIP bus segment": the
+ * no-cache/no-allocate alias, uncached and subject to QMI address
+ * translation. */
 #define XIP_NOCACHE_NOALLOC_BASE 0x14000000
+
+/* Same window with address translation bypassed, readable from secure code.
+ * The bootrom translates only the booted partition's window, so a read of
+ * this region through a translating alias faults once A/B is in use. */
+#define XIP_NOCACHE_NOALLOC_NOTRANSLATE_BASE 0x1c000000
 
 /* XIP cache maintenance (RP2350 datasheet Sec. 4.4.1): writes to this 16 MiB
  * mirror perform cache maintenance ops instead of normal memory access, one
@@ -118,24 +119,24 @@
  * invalidates the *entire* cache to make the new flash contents visible -
  * with no matching clean first, any not-yet-written-back PSRAM data is
  * simply discarded, not corrupted in place but never having reached the
- * chip at all. See plans/wanted-sheriff-deputy-uart-transport.md's M4
- * status note in the mekops-kb and the bare-metal reproduction linked from
- * there for how this was root-caused. */
+ * chip at all. */
 #define XIP_MAINTENANCE_BASE     0x18000000
 #define XIP_CACHE_CLEAN_BY_SET_WAY 1
 #define XIP_CACHE_LINE_SIZE      8
 #define XIP_CACHE_SIZE           (16 * 1024)
 #define XIP_END                  0x14000000
 
+/* Erase/program take a storage address, which the ROM's flash ops truncate
+ * to the chip's 24-bit range; reads take a bus address. */
 #define FLASH_MTD_BASE_ADDR (XIP_BASE + CONFIG_RP23XX_FLASH_MTD_BASE)
 #define FLASH_MTD_READ_ADDR \
-  (XIP_NOCACHE_NOALLOC_BASE + CONFIG_RP23XX_FLASH_MTD_BASE)
+  (XIP_NOCACHE_NOALLOC_NOTRANSLATE_BASE + CONFIG_RP23XX_FLASH_MTD_BASE)
 
 /* Blocks are the smallest unit that can be erased; sectors the smallest
  * unit that can be programmed.  Both match the flash chip's own limits.
  */
 
-#define FLASH_BLOCK_SIZE  (4 * 1024)
+#define FLASH_BLOCK_SIZE  RP23XX_FLASH_MTD_BLOCK_SIZE
 #define FLASH_BLOCK_COUNT (CONFIG_RP23XX_FLASH_MTD_SIZE / FLASH_BLOCK_SIZE)
 
 #define FLASH_SECTOR_SIZE  256
@@ -506,8 +507,8 @@ static ssize_t rp23xx_flash_bread(FAR struct mtd_dev_s *dev,
       return ret;
     }
 
-  /* Read through the XIP no-allocate/no-cache alias: programming does not
-   * update the XIP cache, so a cached read here could return stale data.
+  /* Uncached: programming does not update the XIP cache, so a cached read
+   * here could return stale data.
    */
 
   memcpy(buffer,
