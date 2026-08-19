@@ -53,9 +53,8 @@
  * prior clean silently discards any not-yet-flushed PSRAM data. Root-caused
  * against a real, reproducible failure (WANTED engine bring-up corrupting a
  * PSRAM-resident heap during registry writes) and confirmed with a minimal
- * bare-metal reproduction outside NuttX entirely - see the M4 status note in
- * plans/wanted-sheriff-deputy-uart-transport.md in the mekops-kb. The
- * official Raspberry Pi Pico SDK's own flash_range_erase()/flash_range_
+ * bare-metal reproduction outside NuttX entirely. The official Raspberry
+ * Pi Pico SDK's own flash_range_erase()/flash_range_
  * program() already do the equivalent clean (hardware_xip_cache's
  * xip_cache_clean_all()) for exactly this reason; xip_cache_clean_all()
  * below is a from-scratch NuttX port of that same operation (no cache
@@ -120,9 +119,7 @@
  * invalidates the *entire* cache to make the new flash contents visible -
  * with no matching clean first, any not-yet-written-back PSRAM data is
  * simply discarded, not corrupted in place but never having reached the
- * chip at all. See plans/wanted-sheriff-deputy-uart-transport.md's M4
- * status note in the mekops-kb and the bare-metal reproduction linked from
- * there for how this was root-caused. */
+ * chip at all. */
 #define XIP_MAINTENANCE_BASE     0x18000000
 #define XIP_CACHE_CLEAN_BY_SET_WAY 1
 #define XIP_CACHE_LINE_SIZE      8
