@@ -73,6 +73,10 @@ endif
 ifeq ($(CONFIG_RP23XX_FLASH_MTD),y)
 CHIP_CSRCS += rp23xx_flash_mtd.c
 
+ifeq ($(CONFIG_RP23XX_OTA_MTD),y)
+CHIP_CSRCS += rp23xx_ota_mtd.c
+endif
+
 # rp23xx_flash_mtd.c places its erase/program functions in .data (see the
 # file header) so they execute from RAM, not flash, while they take the
 # flash out of XIP mode.  Placing code outside .text confuses this

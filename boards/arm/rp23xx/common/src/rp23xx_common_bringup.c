@@ -58,6 +58,10 @@
 #  include "rp23xx_flash_mtd.h"
 #endif
 
+#ifdef CONFIG_RP23XX_OTA_MTD
+#  include "rp23xx_ota_mtd.h"
+#endif
+
 #if defined(CONFIG_RP23XX_BOARD_HAS_WS2812) && defined(CONFIG_WS2812)
 #  include "rp23xx_ws2812.h"
 #ifdef CONFIG_WS2812_HAS_WHITE
@@ -628,6 +632,26 @@ int rp23xx_common_bringup(void)
         {
           rp23xx_flash_mount(mtd, "/dev/rp23xxflash",
                              CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT);
+        }
+#endif
+
+#ifdef CONFIG_RP23XX_OTA_MTD
+      /* The update slot is a region of its own, outside the MTD carved
+       * above, so it is bound after it and never mounted.
+       */
+
+      if (mtd != NULL)
+        {
+          FAR struct mtd_dev_s *ota = rp23xx_ota_mtd_initialize();
+
+          if (ota == NULL)
+            {
+              syslog(LOG_ERR, "ERROR: rp23xx_ota_mtd_initialize failed\n");
+            }
+          else if (register_mtddriver("/dev/otaslot", ota, 0755, NULL) < 0)
+            {
+              syslog(LOG_ERR, "ERROR: register_mtddriver(/dev/otaslot)\n");
+            }
         }
 #endif
     }

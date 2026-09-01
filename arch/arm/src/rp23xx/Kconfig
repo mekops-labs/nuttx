@@ -94,6 +94,16 @@ config RP23XX_FLASH_MTD_SIZE
 		Size of the reserved MTD region. Must not extend past the
 		physical flash chip's actual size.
 
+config RP23XX_OTA_MTD
+	bool "Firmware update slot MTD"
+	default n
+	---help---
+		Bind a second MTD device over the image slot the running firmware
+		did not boot from, for staging a firmware update.  The slot and its
+		bounds come from the BootROM partition table in effect, so the
+		running image is never the one exposed.  Requires an A/B partition
+		table; binding fails without one.
+
 config RP23XX_FLASH_MTD_REGISTRY_SIZE
 	int "Leading sub-region size in bytes (0 for one filesystem)"
 	default 0
