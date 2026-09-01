@@ -39,6 +39,7 @@
 
 #include <nuttx/config.h>
 #include <nuttx/mtd/mtd.h>
+#include <nuttx/fs/fs.h>
 #include <nuttx/fs/ioctl.h>
 
 #include <sys/types.h>
@@ -317,6 +318,120 @@ static int rp23xx_ota_ioctl(FAR struct mtd_dev_s *dev, int cmd,
 }
 
 /****************************************************************************
+ * Name: ota_write
+ *
+ * Description:
+ *   Stream image bytes into the slot at the file position.  Writes must be
+ *   whole program units at a program-unit offset: the caller owns any
+ *   buffering, so a short tail is its to pad rather than ours to hide.
+ *
+ ****************************************************************************/
+
+static ssize_t ota_write(FAR struct file *filep, FAR const char *buffer,
+                         size_t buflen)
+{
+  FAR struct rp23xx_ota_mtd_s *priv = &g_ota_mtd;
+  ssize_t nblocks;
+
+  if (buffer == NULL || buflen == 0)
+    {
+      return -EINVAL;
+    }
+
+  if ((filep->f_pos % OTA_BLOCK_SIZE) != 0 || (buflen % OTA_BLOCK_SIZE) != 0)
+    {
+      return -EINVAL;
+    }
+
+  nblocks = rp23xx_ota_bwrite(&priv->mtd, filep->f_pos / OTA_BLOCK_SIZE,
+                              buflen / OTA_BLOCK_SIZE,
+                              (FAR const uint8_t *)buffer);
+  if (nblocks < 0)
+    {
+      return nblocks;
+    }
+
+  filep->f_pos += (off_t)buflen;
+  return (ssize_t)buflen;
+}
+
+/****************************************************************************
+ * Name: ota_read
+ ****************************************************************************/
+
+static ssize_t ota_read(FAR struct file *filep, FAR char *buffer,
+                        size_t buflen)
+{
+  FAR struct rp23xx_ota_mtd_s *priv = &g_ota_mtd;
+  ssize_t ret;
+
+  ret = rp23xx_ota_read(&priv->mtd, filep->f_pos, buflen,
+                        (FAR uint8_t *)buffer);
+  if (ret > 0)
+    {
+      filep->f_pos += (off_t)ret;
+    }
+
+  return ret;
+}
+
+/****************************************************************************
+ * Name: ota_seek
+ ****************************************************************************/
+
+static off_t ota_seek(FAR struct file *filep, off_t offset, int whence)
+{
+  FAR struct rp23xx_ota_mtd_s *priv = &g_ota_mtd;
+  off_t pos;
+
+  switch (whence)
+    {
+      case SEEK_SET:
+        pos = offset;
+        break;
+
+      case SEEK_CUR:
+        pos = filep->f_pos + offset;
+        break;
+
+      case SEEK_END:
+        pos = (off_t)priv->size + offset;
+        break;
+
+      default:
+        return -EINVAL;
+    }
+
+  if (pos < 0 || pos > (off_t)priv->size)
+    {
+      return -EINVAL;
+    }
+
+  filep->f_pos = pos;
+  return pos;
+}
+
+/****************************************************************************
+ * Name: ota_ioctl
+ ****************************************************************************/
+
+static int ota_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
+{
+  FAR struct rp23xx_ota_mtd_s *priv = &g_ota_mtd;
+
+  UNUSED(filep);
+  return rp23xx_ota_ioctl(&priv->mtd, cmd, arg);
+}
+
+static const struct file_operations g_ota_fops =
+{
+  .read  = ota_read,
+  .write = ota_write,
+  .seek  = ota_seek,
+  .ioctl = ota_ioctl,
+};
+
+/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -384,4 +499,14 @@ FAR struct mtd_dev_s *rp23xx_ota_mtd_initialize(void)
          target, (unsigned long)base, (unsigned long)(size / 1024), booted);
 
   return &g_ota_mtd.mtd;
+}
+
+int rp23xx_ota_register(FAR const char *path)
+{
+  if (rp23xx_ota_mtd_initialize() == NULL)
+    {
+      return -ENODEV;
+    }
+
+  return register_driver(path, &g_ota_fops, 0666, NULL);
 }

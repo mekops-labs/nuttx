@@ -642,15 +642,12 @@ int rp23xx_common_bringup(void)
 
       if (mtd != NULL)
         {
-          FAR struct mtd_dev_s *ota = rp23xx_ota_mtd_initialize();
+          int otaret = rp23xx_ota_register("/dev/otaslot");
 
-          if (ota == NULL)
+          if (otaret < 0)
             {
-              syslog(LOG_ERR, "ERROR: rp23xx_ota_mtd_initialize failed\n");
-            }
-          else if (register_mtddriver("/dev/otaslot", ota, 0755, NULL) < 0)
-            {
-              syslog(LOG_ERR, "ERROR: register_mtddriver(/dev/otaslot)\n");
+              syslog(LOG_ERR, "ERROR: rp23xx_ota_register failed: %d\n",
+                     otaret);
             }
         }
 #endif

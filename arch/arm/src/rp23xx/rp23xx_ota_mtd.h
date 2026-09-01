@@ -62,6 +62,25 @@ extern "C"
 
 FAR struct mtd_dev_s *rp23xx_ota_mtd_initialize(void);
 
+/****************************************************************************
+ * Name: rp23xx_ota_register
+ *
+ * Description:
+ *   Bind the update slot and publish it as a character device at `path`.
+ *   An MTD inode carries no file operations, so the slot is registered as a
+ *   character device for a caller that streams an image into it with plain
+ *   write() calls.
+ *
+ *   Writes must be whole program units at a program-unit offset; the caller
+ *   pads its own tail.  MTDIOC_GEOMETRY and MTDIOC_BULKERASE are accepted.
+ *
+ * Returned Value:
+ *   Zero on success, or a negated errno.
+ *
+ ****************************************************************************/
+
+int rp23xx_ota_register(FAR const char *path);
+
 #if defined(__cplusplus)
 }
 #endif
