@@ -26,6 +26,10 @@
 
 #include <stdint.h>
 #include <nuttx/config.h>
+#include <stdbool.h>
+
+#include "arm_internal.h"
+#include "hardware/rp23xx_bootram.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -152,4 +156,34 @@ static void *rom_func_lookup(uint32_t code)
       {
         return rom_table_lookup(code, RT_FLAG_FUNC_ARM_SEC);
       }
+}
+
+/* BootROM lock protocol.
+ *
+ * The ROM APIs that hash — get_partition_table_info among them — do not take
+ * the SHA-256 lock themselves.  They only check it, and the check passes when
+ * nobody holds BOOTLOCK_ENABLE, which is why unlocked calls work today.  The
+ * lock is therefore the caller's to hold, and holding it is what keeps a ROM
+ * call off the SHA-256 hardware while something else is using it.
+ *
+ * BOOTLOCK_ENABLE is deliberately not taken here.  Holding it makes the ROM
+ * reject every unlocked call across all its APIs, so opting in demands an
+ * audit of every ROM call site in the port, not just the hashing ones.
+ *
+ * The registers are hardware spinlocks in BOOTRAM: a read returns nonzero to
+ * exactly one claimant, and writing zero releases.
+ */
+
+#define RP23XX_BOOTROM_LOCK_SHA_256  0
+#define RP23XX_BOOTROM_LOCK_FLASH_OP 1
+#define RP23XX_BOOTROM_LOCK_OTP      2
+
+static inline bool rom_try_acquire_lock(int lock_num)
+{
+  return getreg32(RP23XX_BOOTRAM_BOOTLOCK(lock_num)) != 0;
+}
+
+static inline void rom_release_lock(int lock_num)
+{
+  putreg32(0, RP23XX_BOOTRAM_BOOTLOCK(lock_num));
 }

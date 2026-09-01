@@ -137,6 +137,10 @@ static int booted_partition(void)
       return -ENOSYS;
     }
 
+  /* Unlocked deliberately: the sys-info API does not hash, so it neither
+   * uses the SHA-256 hardware nor checks the lock.
+   */
+
   filled = get_sys_info(words, BOOT_INFO_WORDS, SYS_INFO_BOOT_INFO);
   if (filled != BOOT_INFO_WORDS || words[0] != SYS_INFO_BOOT_INFO)
     {
@@ -172,8 +176,15 @@ static int partition_bounds(int index, uint32_t *base, uint32_t *size,
       return -ENOSYS;
     }
 
+  if (!rom_try_acquire_lock(RP23XX_BOOTROM_LOCK_SHA_256))
+    {
+      return -EBUSY;
+    }
+
   filled = get_pt(words, PT_QUERY_WORDS,
                   PT_INFO_PARTITION_LOCATION_AND_FLAGS);
+  rom_release_lock(RP23XX_BOOTROM_LOCK_SHA_256);
+
   if (filled < 2 || words[0] != PT_INFO_PARTITION_LOCATION_AND_FLAGS)
     {
       return -EIO;
