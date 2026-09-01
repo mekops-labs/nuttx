@@ -607,10 +607,29 @@ int rp23xx_common_bringup(void)
         {
           FAR struct mtd_dev_s *part;
           FAR struct mtd_dev_s *rest;
-          off_t nblocks = CONFIG_RP23XX_FLASH_MTD_REGISTRY_SIZE /
-                          RP23XX_FLASH_MTD_BLOCK_SIZE;
-          off_t total   = CONFIG_RP23XX_FLASH_MTD_SIZE /
-                          RP23XX_FLASH_MTD_BLOCK_SIZE;
+          struct mtd_geometry_s geo;
+          off_t nblocks;
+          off_t total;
+
+          /* mtd_partition() counts in the geometry's blocksize, which is the
+           * 256-byte program page here and not the 4 KiB erase block.  Sizing
+           * with the erase block undercounts by the ratio between them, so
+           * take both numbers from the device rather than from a constant.
+           */
+
+          if (mtd->ioctl(mtd, MTDIOC_GEOMETRY,
+                         (unsigned long)(uintptr_t)&geo) < 0)
+            {
+              syslog(LOG_ERR, "ERROR: MTDIOC_GEOMETRY failed\n");
+              geo.blocksize = RP23XX_FLASH_MTD_BLOCK_SIZE;
+              geo.erasesize = RP23XX_FLASH_MTD_BLOCK_SIZE;
+              geo.neraseblocks = CONFIG_RP23XX_FLASH_MTD_SIZE /
+                                 RP23XX_FLASH_MTD_BLOCK_SIZE;
+            }
+
+          nblocks = CONFIG_RP23XX_FLASH_MTD_REGISTRY_SIZE / geo.blocksize;
+          total   = (off_t)geo.neraseblocks *
+                    (geo.erasesize / geo.blocksize);
 
           /* Both volumes need a partition of their own.  mtd_partition()
            * only builds the child; it does not shorten the parent, so
