@@ -56,7 +56,14 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
+#define XIP_BASE                             0x10000000
 #define XIP_NOCACHE_NOALLOC_NOTRANSLATE_BASE 0x1c000000
+
+/* Reboot types, from the ROM's reboot entry point. */
+
+#define REBOOT2_FLAG_REBOOT_TYPE_FLASH_UPDATE 0x4
+#define REBOOT2_FLAG_NO_RETURN_ON_SUCCESS     0x100
+#define OTA_REBOOT_DELAY_MS                   10
 
 /* Boot info returns an echoed flags word, then boot_word, a diagnostic and
  * two reboot params.  boot_word's third byte is the booted partition.
@@ -308,6 +315,31 @@ static int rp23xx_ota_ioctl(FAR struct mtd_dev_s *dev, int cmd,
 
       case MTDIOC_BULKERASE:
         ret = rp23xx_flash_region_erase(priv->base, priv->size);
+        break;
+
+      case RP23XX_OTA_IOC_BOOT_SLOT:
+        {
+          rom_reboot_fn reboot_fn =
+            (rom_reboot_fn)rom_func_lookup(ROM_FUNC_REBOOT);
+
+          if (reboot_fn == NULL)
+            {
+              ret = -ENOSYS;
+              break;
+            }
+
+          /* p0 names the updated region, which the loader matches against
+           * a slot's start address to prefer it.
+           */
+
+          ret = reboot_fn(REBOOT2_FLAG_REBOOT_TYPE_FLASH_UPDATE |
+                          REBOOT2_FLAG_NO_RETURN_ON_SUCCESS,
+                          OTA_REBOOT_DELAY_MS, XIP_BASE + priv->base, 0);
+          if (ret == 0)
+            {
+              ret = OK;
+            }
+        }
         break;
 
       case RP23XX_OTA_IOC_CONFIRM:

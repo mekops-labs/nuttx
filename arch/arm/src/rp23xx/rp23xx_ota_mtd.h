@@ -49,6 +49,14 @@ extern "C"
 
 #define RP23XX_OTA_IOC_CONFIRM _MTDIOC(0x00f0)
 
+/* Reboot into the update slot as a flash-update boot, so the loader
+ * prefers that slot and treats the boot as provisional.  A plain reset
+ * would choose by version alone and record no pending buy, leaving nothing
+ * to revert.  Does not return on success.
+ */
+
+#define RP23XX_OTA_IOC_BOOT_SLOT _MTDIOC(0x00f1)
+
 /****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/
