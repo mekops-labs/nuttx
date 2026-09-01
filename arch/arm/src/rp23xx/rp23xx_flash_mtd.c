@@ -160,6 +160,7 @@ typedef void (*flash_range_program_f)(uint32_t addr, const uint8_t *data,
                                       size_t count);
 typedef void (*flash_flush_cache_f)(void);
 typedef void (*flash_enter_cmd_xip_f)(void);
+typedef int (*explicit_buy_f)(uint8_t *buffer, uint32_t buffer_size);
 
 #ifdef CONFIG_SMP
 /* Coordinates "pause"/"resume" of the other core(s) while flash is out of
@@ -750,6 +751,78 @@ int rp23xx_flash_region_program(uint32_t offset, FAR const uint8_t *data,
 
   nxmutex_unlock(&priv->lock);
   return 0;
+}
+
+/****************************************************************************
+ * Name: rp23xx_flash_explicit_buy
+ *
+ * Description:
+ *   Confirm the running image through the BootROM, clearing its pending
+ *   "buy" so the loader stops treating the boot as provisional.  The ROM
+ *   rewrites flash to clear the flag and wants at least 4 KiB of word
+ *   aligned scratch, so this carries the same lock, SMP isolation and
+ *   critical section as an erase, and saves the QMI registers PSRAM reads
+ *   through across the call.
+ *
+ *   The ROM may reset the chip while updating a rollback version, so this
+ *   is not guaranteed to return.
+ *
+ * Returned Value:
+ *   Zero on success, or a negated errno.
+ *
+ ****************************************************************************/
+
+int rp23xx_flash_explicit_buy(FAR uint8_t *scratch, size_t len)
+{
+  FAR struct rp23xx_flash_dev_s *priv = &g_rp23xx_flash_dev;
+  struct qmi_cs1_save_s qmi_save;
+  explicit_buy_f explicit_buy;
+  irqstate_t flags;
+  int romret;
+  int ret;
+#ifdef CONFIG_SMP
+  struct smp_isolation_s smp_isolation;
+
+  init_smp_isolation(&smp_isolation);
+#endif
+
+  if (scratch == NULL || len < RP23XX_FLASH_MTD_BLOCK_SIZE ||
+      ((uintptr_t)scratch % sizeof(uint32_t)) != 0)
+    {
+      return -EINVAL;
+    }
+
+  explicit_buy = (explicit_buy_f)rom_func_lookup(ROM_FUNC_EXPLICIT_BUY);
+  if (explicit_buy == NULL)
+    {
+      return -ENOSYS;
+    }
+
+  ret = nxmutex_lock(&priv->lock);
+  if (ret < 0)
+    {
+      return ret;
+    }
+
+#ifdef CONFIG_SMP
+  enter_smp_isolation(&smp_isolation);
+#endif
+
+  flags = enter_critical_section();
+
+  xip_cache_clean_all();
+  save_qmi_cs1(&qmi_save);
+  romret = explicit_buy(scratch, (uint32_t)len);
+  restore_qmi_cs1(&qmi_save);
+
+  leave_critical_section(flags);
+
+#ifdef CONFIG_SMP
+  leave_smp_isolation(&smp_isolation);
+#endif
+
+  nxmutex_unlock(&priv->lock);
+  return romret == 0 ? OK : -EIO;
 }
 
 FAR struct mtd_dev_s *rp23xx_flash_mtd_initialize(void)

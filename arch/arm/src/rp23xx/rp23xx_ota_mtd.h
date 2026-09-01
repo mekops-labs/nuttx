@@ -28,6 +28,7 @@
  ****************************************************************************/
 
 #include <nuttx/config.h>
+#include <nuttx/fs/ioctl.h>
 #include <nuttx/mtd/mtd.h>
 
 #ifndef __ASSEMBLY__
@@ -36,6 +37,17 @@
 extern "C"
 {
 #endif
+
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
+/* Confirm the running image, clearing the BootROM's pending "buy" so the
+ * loader stops treating this boot as provisional.  Idempotent, and takes no
+ * argument.  The ROM may reset the chip while servicing it.
+ */
+
+#define RP23XX_OTA_IOC_CONFIRM _MTDIOC(0x00f0)
 
 /****************************************************************************
  * Public Function Prototypes

@@ -90,6 +90,26 @@ int rp23xx_flash_region_erase(uint32_t offset, size_t len);
 int rp23xx_flash_region_program(uint32_t offset, FAR const uint8_t *data,
                                 size_t len);
 
+/****************************************************************************
+ * Name: rp23xx_flash_explicit_buy
+ *
+ * Description:
+ *   Confirm the running image through the BootROM, clearing its pending
+ *   "buy" so the loader stops treating this boot as provisional.  The ROM
+ *   rewrites flash to clear the flag, so `scratch` must be word aligned and
+ *   at least one erase block long, and the call carries the same
+ *   protections as an erase.
+ *
+ *   The ROM may reset the chip while updating a rollback version, so this
+ *   is not guaranteed to return.
+ *
+ * Returned Value:
+ *   Zero on success, or a negated errno.
+ *
+ ****************************************************************************/
+
+int rp23xx_flash_explicit_buy(FAR uint8_t *scratch, size_t len);
+
 #undef EXTERN
 #if defined(__cplusplus)
 }

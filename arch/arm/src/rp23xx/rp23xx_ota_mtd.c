@@ -310,6 +310,19 @@ static int rp23xx_ota_ioctl(FAR struct mtd_dev_s *dev, int cmd,
         ret = rp23xx_flash_region_erase(priv->base, priv->size);
         break;
 
+      case RP23XX_OTA_IOC_CONFIRM:
+        {
+          /* The ROM rewrites flash to clear the flag and wants 4 KiB of
+           * word aligned scratch of its own.
+           */
+
+          static uint32_t scratch[OTA_ERASE_SIZE / sizeof(uint32_t)];
+
+          ret = rp23xx_flash_explicit_buy((FAR uint8_t *)scratch,
+                                          sizeof(scratch));
+        }
+        break;
+
       default:
         break;
     }
