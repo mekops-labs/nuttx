@@ -631,6 +631,127 @@ static int rp23xx_flash_ioctl(FAR struct mtd_dev_s *dev, int cmd,
  * Public Functions
  ****************************************************************************/
 
+/****************************************************************************
+ * Name: rp23xx_flash_region_erase
+ *
+ * Description:
+ *   Erase a flash region outside the MTD's own, addressed as a storage
+ *   offset from the start of flash.  Callers own the reservation: nothing
+ *   here checks the offset against the running image or the MTD region.
+ *   Serialised against the MTD through the same lock, and carrying the same
+ *   SMP isolation and critical section, because both drive the one flash.
+ *
+ * Returned Value:
+ *   Zero on success, or a negated errno.
+ *
+ ****************************************************************************/
+
+int rp23xx_flash_region_erase(uint32_t offset, size_t len)
+{
+  FAR struct rp23xx_flash_dev_s *priv = &g_rp23xx_flash_dev;
+  irqstate_t flags;
+  int ret;
+#ifdef CONFIG_SMP
+  struct smp_isolation_s smp_isolation;
+
+  init_smp_isolation(&smp_isolation);
+#endif
+
+  if (!g_initialized)
+    {
+      return -EPERM;
+    }
+
+  if ((offset % FLASH_BLOCK_SIZE) != 0 || len == 0 ||
+      (len % FLASH_BLOCK_SIZE) != 0)
+    {
+      return -EINVAL;
+    }
+
+  ret = nxmutex_lock(&priv->lock);
+  if (ret < 0)
+    {
+      return ret;
+    }
+
+#ifdef CONFIG_SMP
+  enter_smp_isolation(&smp_isolation);
+#endif
+
+  flags = enter_critical_section();
+
+  do_erase(XIP_BASE + offset, len);
+
+  leave_critical_section(flags);
+
+#ifdef CONFIG_SMP
+  leave_smp_isolation(&smp_isolation);
+#endif
+
+  nxmutex_unlock(&priv->lock);
+  return 0;
+}
+
+/****************************************************************************
+ * Name: rp23xx_flash_region_program
+ *
+ * Description:
+ *   Program a flash region outside the MTD's own.  The region must already
+ *   be erased.  Offset and length are in program-unit multiples; the
+ *   reservation and locking notes on rp23xx_flash_region_erase apply.
+ *
+ * Returned Value:
+ *   Zero on success, or a negated errno.
+ *
+ ****************************************************************************/
+
+int rp23xx_flash_region_program(uint32_t offset, FAR const uint8_t *data,
+                                size_t len)
+{
+  FAR struct rp23xx_flash_dev_s *priv = &g_rp23xx_flash_dev;
+  irqstate_t flags;
+  int ret;
+#ifdef CONFIG_SMP
+  struct smp_isolation_s smp_isolation;
+
+  init_smp_isolation(&smp_isolation);
+#endif
+
+  if (!g_initialized)
+    {
+      return -EPERM;
+    }
+
+  if (data == NULL || len == 0 || (offset % FLASH_SECTOR_SIZE) != 0 ||
+      (len % FLASH_SECTOR_SIZE) != 0)
+    {
+      return -EINVAL;
+    }
+
+  ret = nxmutex_lock(&priv->lock);
+  if (ret < 0)
+    {
+      return ret;
+    }
+
+#ifdef CONFIG_SMP
+  enter_smp_isolation(&smp_isolation);
+#endif
+
+  flags = enter_critical_section();
+
+  do_program(XIP_BASE + offset, data, len);
+
+  leave_critical_section(flags);
+
+#ifdef CONFIG_SMP
+  leave_smp_isolation(&smp_isolation);
+#endif
+
+  nxmutex_unlock(&priv->lock);
+  return 0;
+}
+
 FAR struct mtd_dev_s *rp23xx_flash_mtd_initialize(void)
 {
   if (g_initialized)

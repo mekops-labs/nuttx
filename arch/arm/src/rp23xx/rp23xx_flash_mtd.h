@@ -68,6 +68,28 @@ extern "C"
 
 FAR struct mtd_dev_s *rp23xx_flash_mtd_initialize(void);
 
+/****************************************************************************
+ * Name: rp23xx_flash_region_erase / rp23xx_flash_region_program
+ *
+ * Description:
+ *   Erase and program a flash region outside the MTD's own, addressed as a
+ *   storage offset from the start of flash, for a caller holding its own
+ *   reservation - the firmware image slots among them.  Both need the MTD
+ *   bound first, since binding is what resolves the ROM flash entry points,
+ *   and both serialise against it.
+ *
+ *   Offset and length are multiples of the erase block for erase, and of
+ *   the program unit for program.
+ *
+ * Returned Value:
+ *   Zero on success, or a negated errno.
+ *
+ ****************************************************************************/
+
+int rp23xx_flash_region_erase(uint32_t offset, size_t len);
+int rp23xx_flash_region_program(uint32_t offset, FAR const uint8_t *data,
+                                size_t len);
+
 #undef EXTERN
 #if defined(__cplusplus)
 }
