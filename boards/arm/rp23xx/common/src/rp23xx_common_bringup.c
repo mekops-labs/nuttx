@@ -606,17 +606,25 @@ int rp23xx_common_bringup(void)
       else
         {
           FAR struct mtd_dev_s *part;
+          FAR struct mtd_dev_s *rest;
           off_t nblocks = CONFIG_RP23XX_FLASH_MTD_REGISTRY_SIZE /
                           RP23XX_FLASH_MTD_BLOCK_SIZE;
+          off_t total   = CONFIG_RP23XX_FLASH_MTD_SIZE /
+                          RP23XX_FLASH_MTD_BLOCK_SIZE;
 
-          /* mtd_partition() hands back the leading sub-region and shortens
-           * the parent in place, so the parent is what remains after it.
+          /* Both volumes need a partition of their own.  mtd_partition()
+           * only builds the child; it does not shorten the parent, so
+           * mounting the parent alongside a partition of it would put both
+           * filesystems at region offset 0.  They would then overlap
+           * completely, and each format would destroy the other's
+           * superblock -- a mount failure and a reformat on every boot,
+           * with nothing ever persisting.
            */
 
           part = mtd_partition(mtd, 0, nblocks);
           if (part == NULL)
             {
-              syslog(LOG_ERR, "ERROR: mtd_partition failed\n");
+              syslog(LOG_ERR, "ERROR: mtd_partition(registry) failed\n");
             }
           else
             {
@@ -624,8 +632,16 @@ int rp23xx_common_bringup(void)
                                  CONFIG_RP23XX_FLASH_MTD_REGISTRY_MOUNTPOINT);
             }
 
-          rp23xx_flash_mount(mtd, "/dev/rp23xxflash",
-                             CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT);
+          rest = mtd_partition(mtd, nblocks, total - nblocks);
+          if (rest == NULL)
+            {
+              syslog(LOG_ERR, "ERROR: mtd_partition(flash) failed\n");
+            }
+          else
+            {
+              rp23xx_flash_mount(rest, "/dev/rp23xxflash",
+                                 CONFIG_RP23XX_FLASH_MTD_MOUNTPOINT);
+            }
         }
 #else
       else
