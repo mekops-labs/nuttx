@@ -179,6 +179,15 @@ static int pseudorename(FAR const char *oldpath, FAR struct inode *oldinode,
   newinode->i_child   = oldinode->i_child;   /* Link to lower level inode */
   newinode->i_flags   = oldinode->i_flags;   /* Flags for inode */
   newinode->u.i_ops   = oldinode->u.i_ops;   /* Inode operations */
+  newinode->i_size    = oldinode->i_size;    /* Size of per inode driver,
+                                               * e.g. a pseudofile's content
+                                               * length: the driver's own
+                                               * state (i_private) carries the
+                                               * bytes across a rename, but
+                                               * this field lives on the inode
+                                               * itself and was left at the
+                                               * newly reserved inode's
+                                               * default of zero otherwise. */
 #ifdef CONFIG_PSEUDOFS_ATTRIBUTES
   newinode->i_mode    = oldinode->i_mode;    /* Access mode flags */
   newinode->i_owner   = oldinode->i_owner;   /* Owner */
